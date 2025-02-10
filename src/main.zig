@@ -1,5 +1,5 @@
 const std = @import("std");
-const SectionHeader = @import("./section/header.zig").SectionHeader;
+const SectionHeader = @import("./section.zig").SectionHeader;
 
 pub fn isValidBGL(data: []const u8) bool {
     const bgl_magic_1 = [_]u8{ 0x01, 0x02, 0x92, 0x19, 0x38 };
