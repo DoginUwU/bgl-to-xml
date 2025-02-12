@@ -33,6 +33,7 @@ const BGLDecoder = struct {
 
         const header = std.mem.bytesToValue(Header, data[0..@sizeOf(Header)]);
         const section_headers = try std.ArrayList(SectionHeader).initCapacity(alloc, header.sections_len);
+        errdefer section_headers.deinit();
 
         return .{
             .header = header,
