@@ -1,0 +1,59 @@
+const std = @import("std");
+
+pub const XmlNode = struct {
+    name: []const u8,
+    attributes: ?std.StringHashMap([]const u8) = null,
+    children: ?std.ArrayList(XmlNode) = null,
+    text: ?[]const u8 = null,
+
+    pub fn init(alloc: std.mem.Allocator, name: []const u8) XmlNode {
+        return XmlNode{
+            .name = name,
+            .attributes = std.StringHashMap([]const u8).init(alloc),
+            .children = std.ArrayList(XmlNode).init(alloc),
+            .text = null,
+        };
+    }
+
+    pub fn addChild(self: *XmlNode, child: XmlNode) !void {
+        try self.children.?.append(child);
+    }
+
+    pub fn addAttribute(self: *XmlNode, key: []const u8, value: []const u8) !void {
+        try self.attributes.?.put(key, value);
+    }
+
+    pub fn deinit(self: *XmlNode) void {
+        self.attributes.?.deinit();
+
+        for (self.children.?.items) |*child| {
+            child.deinit();
+        }
+
+        self.children.?.deinit();
+    }
+
+    pub fn write(self: *XmlNode, file: std.fs.File, indent: usize) !void {
+        var writer = file.writer();
+
+        try writer.print("<{s}", .{self.name});
+
+        var iter = self.attributes.?.iterator();
+        while (iter.next()) |entry| {
+            try writer.print(" {s}=\"{s}\"", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
+
+        if (self.children.?.items.len == 0 and self.text == null) {
+            try writer.writeAll(" />\n");
+            return;
+        }
+
+        try writer.writeAll(">\n");
+
+        for (self.children.?.items) |*child| {
+            try child.write(file, indent + 1);
+        }
+
+        try writer.print("</{s}>", .{self.name});
+    }
+};

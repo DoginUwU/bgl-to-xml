@@ -1,4 +1,5 @@
 const std = @import("std");
+const XmlNode = @import("./xml.zig").XmlNode;
 
 pub const SectionType = enum(u32) {
     None = 0x0,
@@ -88,7 +89,7 @@ pub const SectionHeader = struct {
         };
     }
 
-    pub fn findSubSection(self: *SectionHeader, full_data: []const u8, idx: u32) !SubSection {
+    pub fn findSubSection(self: *SectionHeader, full_data: []const u8, idx: usize) !SubSection {
         if (idx >= self.raw.num_subsections) {
             return error.InvalidSubSectionIndex;
         }
@@ -122,12 +123,14 @@ pub const SubSection = struct {
         };
     }
 
-    pub fn readData(self: *SubSection, alloc: std.mem.Allocator, full_data: []const u8) !void {
+    pub fn writeData(self: *SubSection, alloc: std.mem.Allocator, full_data: []const u8, node: *XmlNode) !void {
         const sliced_data = full_data[self.raw.subsection_data_offset .. self.raw.subsection_data_offset + self.raw.subsection_data_size];
 
         switch (self.header.raw.type) {
             SectionType.Airport => {
-                const data = try AirportSubSection.init(alloc, sliced_data);
+                var data = try AirportSubSection.init(alloc, sliced_data);
+                defer data.deinit();
+                try data.write(alloc, node);
                 std.debug.print("\n{any}\n", .{data.raw});
             },
             else => @panic("Not implemented SubSection type data"),
@@ -216,7 +219,7 @@ const AirportSubSection = struct {
         std.debug.assert(raw.id == 0x0056);
 
         var records = std.ArrayList(Record).init(alloc);
-        defer records.deinit();
+        errdefer records.deinit();
         var current_size_records: u32 = 0x44;
 
         while (current_size_records < raw.size) {
@@ -233,5 +236,24 @@ const AirportSubSection = struct {
             .data = data, //
             .records = records,
         };
+    }
+
+    pub fn deinit(self: *AirportSubSection) void {
+        self.records.deinit();
+    }
+
+    pub fn write(self: *AirportSubSection, alloc: std.mem.Allocator, node: *XmlNode) !void {
+        var new_node = XmlNode.init(alloc, "Airport");
+
+        for (self.records.items[0..1]) |*record| {
+            switch (record.raw.id) {
+                .AirportName => {
+                    try new_node.addAttribute("name", record.record_data);
+                },
+                else => {},
+            }
+        }
+
+        try node.addChild(new_node);
     }
 };

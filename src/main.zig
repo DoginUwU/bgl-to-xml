@@ -1,5 +1,7 @@
 const std = @import("std");
 const SectionHeader = @import("./section.zig").SectionHeader;
+const SectionType = @import("./section.zig").SectionType;
+const XmlNode = @import("./xml.zig").XmlNode;
 
 pub fn isValidBGL(data: []const u8) bool {
     const bgl_magic_1 = [_]u8{ 0x01, 0x02, 0x92, 0x19, 0x38 };
@@ -86,7 +88,28 @@ pub fn main() !void {
     defer decoder.deinit();
     try decoder.fillData();
 
-    var teste = decoder.section_headers.items[0];
-    var teste2 = try teste.findSubSection(data, 0);
-    try teste2.readData(allocator, data);
+    var root = XmlNode.init(allocator, "Root");
+    defer root.deinit();
+
+    const xml_file = try std.fs.cwd().createFile("test.xml", .{ .read = true });
+    defer xml_file.close();
+
+    std.debug.print("{any}\n", .{decoder.section_headers.items[1]});
+
+    for (decoder.section_headers.items) |*section| {
+        if (section.raw.type == SectionType.Airport) {
+            for (0..section.raw.num_subsections) |idx| {
+                var sub_section = try section.findSubSection(data, idx);
+                try sub_section.writeData(allocator, data, &root);
+            }
+            // const node = XmlNode.init(allocator, "Airport");
+            // try root.addChild(node);
+        }
+    }
+
+    try root.write(xml_file, 0);
+
+    // var teste = decoder.section_headers.items[0];
+    // var teste2 = try teste.findSubSection(data, 0);
+    // try teste2.readData(allocator, data);
 }
