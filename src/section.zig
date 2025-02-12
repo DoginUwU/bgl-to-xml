@@ -173,8 +173,8 @@ const AirportSubSection = struct {
         };
 
         pub fn init(data: []const u8) Record {
-            const raw = std.mem.bytesToValue(RecordRaw, data[0..@sizeOf(RecordRaw)]);
-            const record_data = data[@sizeOf(RecordRaw)..raw.size];
+            const raw = std.mem.bytesToValue(RecordRaw, data[0..@divExact(@bitSizeOf(RecordRaw), 8)]);
+            const record_data = data[@divExact(@bitSizeOf(RecordRaw), 8)..raw.size];
 
             return .{
                 .raw = raw,
@@ -207,11 +207,11 @@ const AirportSubSection = struct {
         idk3: u8,
         idk4: u8,
         flatten: u8,
-        idk5: u64, //
+        idk5: u64,
     };
 
     pub fn init(alloc: std.mem.Allocator, data: []const u8) !AirportSubSection {
-        const raw = std.mem.bytesToValue(AirportSubSectionRaw, data[0..@sizeOf(AirportSubSectionRaw)]);
+        const raw = std.mem.bytesToValue(AirportSubSectionRaw, data[0..@divExact(@bitSizeOf(AirportSubSectionRaw), 8)]);
 
         std.debug.assert(raw.id == 0x0056);
 
@@ -227,8 +227,6 @@ const AirportSubSection = struct {
         }
 
         std.debug.assert(current_size_records == raw.size);
-
-        std.debug.print("{any}\n", .{records.items[2]});
 
         return .{
             .raw = raw,
