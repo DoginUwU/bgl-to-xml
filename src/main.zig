@@ -97,13 +97,9 @@ pub fn main() !void {
     std.debug.print("{any}\n", .{decoder.section_headers.items[1]});
 
     for (decoder.section_headers.items) |*section| {
-        if (section.raw.type == SectionType.Airport) {
-            for (0..section.raw.num_subsections) |idx| {
-                var sub_section = try section.findSubSection(data, idx);
-                try sub_section.writeData(allocator, data, &root);
-            }
-            // const node = XmlNode.init(allocator, "Airport");
-            // try root.addChild(node);
+        for (0..section.raw.num_subsections) |idx| {
+            var sub_section = try section.findSubSection(data, idx);
+            try sub_section.writeData(allocator, data, &root);
         }
     }
 

@@ -1,5 +1,6 @@
 const std = @import("std");
 const XmlNode = @import("./xml.zig").XmlNode;
+const Utils = @import("./utils.zig").Utils;
 
 pub const SectionType = enum(u32) {
     None = 0x0,
@@ -133,7 +134,7 @@ pub const SubSection = struct {
                 try data.write(alloc, node);
                 std.debug.print("\n{any}\n", .{data.raw});
             },
-            else => @panic("Not implemented SubSection type data"),
+            else => std.debug.print("Not implemented SubSection type data {any}\n", .{self.header.raw.type}),
         }
     }
 };
@@ -220,10 +221,10 @@ const AirportSubSection = struct {
 
         var records = std.ArrayList(Record).init(alloc);
         errdefer records.deinit();
-        var current_size_records: u32 = 0x44;
+        var current_size_records: u32 = @divExact(@bitSizeOf(AirportSubSectionRaw), 8);
 
         while (current_size_records < raw.size) {
-            const new_record = Record.init(data[current_size_records..data.len]);
+            const new_record = Record.init(data[current_size_records..]);
             try records.append(new_record);
 
             current_size_records += new_record.raw.size;
@@ -248,11 +249,24 @@ const AirportSubSection = struct {
         for (self.records.items[0..1]) |*record| {
             switch (record.raw.id) {
                 .AirportName => {
-                    try new_node.addAttribute("name", record.record_data);
+                    try new_node.addAttribute("name", Utils.trimNullTerminator(record.record_data));
                 },
                 else => {},
             }
         }
+
+        const latitude = try Utils.floatToString(alloc, Utils.computeLatitude(self.raw.latitude));
+        const longitude = try Utils.floatToString(alloc, Utils.computeLongitude(self.raw.longitude));
+        const icao = try Utils.decodeICAO(alloc, self.raw.icao_ident, true);
+        defer {
+            alloc.free(latitude);
+            alloc.free(longitude);
+            alloc.free(icao);
+        }
+
+        try new_node.addAttribute("lat", latitude);
+        try new_node.addAttribute("lon", longitude);
+        try new_node.addAttribute("ident", icao);
 
         try node.addChild(new_node);
     }

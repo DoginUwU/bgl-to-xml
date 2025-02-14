@@ -5,6 +5,7 @@ pub const XmlNode = struct {
     attributes: ?std.StringHashMap([]const u8) = null,
     children: ?std.ArrayList(XmlNode) = null,
     text: ?[]const u8 = null,
+    alloc: std.mem.Allocator,
 
     pub fn init(alloc: std.mem.Allocator, name: []const u8) XmlNode {
         return XmlNode{
@@ -12,6 +13,7 @@ pub const XmlNode = struct {
             .attributes = std.StringHashMap([]const u8).init(alloc),
             .children = std.ArrayList(XmlNode).init(alloc),
             .text = null,
+            .alloc = alloc,
         };
     }
 
@@ -20,10 +22,17 @@ pub const XmlNode = struct {
     }
 
     pub fn addAttribute(self: *XmlNode, key: []const u8, value: []const u8) !void {
-        try self.attributes.?.put(key, value);
+        try self.attributes.?.put(key, try self.alloc.dupe(u8, value));
     }
 
     pub fn deinit(self: *XmlNode) void {
+        if (self.attributes) |*map| {
+            var it = map.iterator();
+            while (it.next()) |entry| {
+                self.alloc.free(entry.value_ptr.*);
+            }
+        }
+
         self.attributes.?.deinit();
 
         for (self.children.?.items) |*child| {
