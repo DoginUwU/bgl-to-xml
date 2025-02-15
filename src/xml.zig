@@ -45,7 +45,10 @@ pub const XmlNode = struct {
     pub fn write(self: *XmlNode, file: std.fs.File, indent: usize) !void {
         var writer = file.writer();
 
-        try writer.print("<{s}", .{self.name});
+        const indentation = try self.alloc.alloc(u8, indent * 2);
+        defer self.alloc.free(indentation);
+        @memset(indentation, ' ');
+        try writer.print("{s}<{s}", .{ indentation, self.name });
 
         var iter = self.attributes.?.iterator();
         while (iter.next()) |entry| {
