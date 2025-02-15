@@ -65,6 +65,7 @@ pub const SectionType = enum(u32) {
 pub const SectionHeader = struct {
     raw: SectionHeaderRaw,
     size_per_section: u32,
+    subsections: std.ArrayList(SubSection),
 
     pub const SectionHeaderRaw = struct {
         type: SectionType,
@@ -74,7 +75,7 @@ pub const SectionHeader = struct {
         total_subsection_size: u32,
     };
 
-    pub fn init(header_data: []const u8) !SectionHeader {
+    pub fn init(alloc: std.mem.Allocator, header_data: []const u8) !SectionHeader {
         const header = std.mem.bytesToValue(SectionHeaderRaw, header_data);
 
         const size_per_section = ((header.subsection_flags & 0x10000) | 0x40000) >> 0x0E;
@@ -84,21 +85,35 @@ pub const SectionHeader = struct {
             return error.InvalidSubsectionSize;
         }
 
+        const subsections = try std.ArrayList(SubSection).initCapacity(alloc, header.num_subsections);
+        errdefer subsections.deinit();
+
         return .{
             .raw = header,
             .size_per_section = size_per_section,
+            .subsections = subsections,
         };
     }
 
-    pub fn findSubSection(self: *SectionHeader, full_data: []const u8, idx: usize) !SubSection {
-        if (idx >= self.raw.num_subsections) {
+    pub fn deinit(self: *SectionHeader) void {
+        self.subsections.deinit();
+    }
+
+    pub fn loadSubSection(self: *SectionHeader, full_data: []const u8) !void {
+        if (self.subsections.items.len >= self.raw.num_subsections) {
             return error.InvalidSubSectionIndex;
         }
 
-        const start_offset = self.raw.first_subsection_offset + (idx * self.size_per_section);
-        const subsection = SubSection.init(self, full_data[start_offset .. start_offset + self.size_per_section]);
+        const start_offset = self.raw.first_subsection_offset + (self.subsections.items.len * self.size_per_section);
+        const subsection = try SubSection.init(self, full_data[start_offset .. start_offset + self.size_per_section]);
+        try self.subsections.append(subsection);
+    }
 
-        return subsection;
+    pub fn writeData(self: *SectionHeader, alloc: std.mem.Allocator, full_data: []const u8, node: *XmlNode) !void {
+        for (self.subsections.items) |*subsection| {
+            const new_node = subsection.writeData(alloc, full_data) catch continue;
+            try node.addChild(new_node);
+        }
     }
 };
 
@@ -124,23 +139,24 @@ pub const SubSection = struct {
         };
     }
 
-    pub fn writeData(self: *SubSection, alloc: std.mem.Allocator, full_data: []const u8, node: *XmlNode) !void {
+    pub fn writeData(self: *SubSection, alloc: std.mem.Allocator, full_data: []const u8) !XmlNode {
         const sliced_data = full_data[self.raw.subsection_data_offset .. self.raw.subsection_data_offset + self.raw.subsection_data_size];
 
         switch (self.header.raw.type) {
             SectionType.Airport => {
                 var data = try AirportSubSection.init(alloc, sliced_data);
                 defer data.deinit();
-                try data.write(node);
-                std.debug.print("\n{any}\n", .{data.raw});
+                return try data.write();
             },
             SectionType.Waypoint => {
                 var data = try WaypointSubSection.init(alloc, sliced_data);
                 // defer data.deinit();
-                try data.write(node);
-                std.debug.print("\n{any}\n", .{data.raw});
+                return try data.write();
             },
-            else => std.debug.print("Not implemented SubSection type data {any}\n", .{self.header.raw.type}),
+            else => {
+                std.debug.print("Not implemented SubSection type data {any}\n", .{self.header.raw.type});
+                return error.UnhandledSubSection;
+            },
         }
     }
 };
@@ -251,13 +267,13 @@ const AirportSubSection = struct {
         self.records.deinit();
     }
 
-    pub fn write(self: *AirportSubSection, node: *XmlNode) !void {
-        var new_node = XmlNode.init(self.alloc, "Airport");
+    pub fn write(self: *AirportSubSection) !XmlNode {
+        var node = XmlNode.init(self.alloc, "Airport");
 
         for (self.records.items[0..1]) |*record| {
             switch (record.raw.id) {
                 .AirportName => {
-                    try new_node.addAttribute("name", Utils.trimNullTerminator(record.record_data));
+                    try node.addAttribute("name", Utils.trimNullTerminator(record.record_data));
                 },
                 else => {},
             }
@@ -272,11 +288,11 @@ const AirportSubSection = struct {
             self.alloc.free(icao);
         }
 
-        try new_node.addAttribute("lat", latitude);
-        try new_node.addAttribute("lon", longitude);
-        try new_node.addAttribute("ident", icao);
+        try node.addAttribute("lat", latitude);
+        try node.addAttribute("lon", longitude);
+        try node.addAttribute("ident", icao);
 
-        try node.addChild(new_node);
+        return node;
     }
 };
 
@@ -320,16 +336,31 @@ const WaypointSubSection = struct {
         };
     }
 
-    pub fn write(self: *WaypointSubSection, node: *XmlNode) !void {
-        var new_node = XmlNode.init(self.alloc, "Waypoint");
+    pub fn write(self: *WaypointSubSection) !XmlNode {
+        var node = XmlNode.init(self.alloc, "Waypoint");
 
+        const latitude = try Utils.floatToString(self.alloc, Utils.computeLatitude(self.raw.latitude));
+        const longitude = try Utils.floatToString(self.alloc, Utils.computeLongitude(self.raw.longitude));
+        const mag_var = try Utils.floatToString(self.alloc, self.raw.magnetic_variation_deg);
         const icao = try Utils.decodeICAO(self.alloc, self.raw.icao_ident, true);
+        const airport_icao = try Utils.decodeICAO(self.alloc, (self.raw.region >> 11), true);
+        const region = try Utils.decodeICAO(self.alloc, self.raw.region & 0x7FF, true);
         defer {
+            self.alloc.free(latitude);
+            self.alloc.free(longitude);
             self.alloc.free(icao);
+            self.alloc.free(airport_icao);
+            self.alloc.free(region);
+            self.alloc.free(mag_var);
         }
 
-        try new_node.addAttribute("ident", icao);
+        try node.addAttribute("lat", latitude);
+        try node.addAttribute("lon", longitude);
+        try node.addAttribute("ident", icao);
+        try node.addAttribute("airportIdent", airport_icao);
+        try node.addAttribute("region", region);
+        try node.addAttribute("magVar", mag_var);
 
-        try node.addChild(new_node);
+        return node;
     }
 };

@@ -17,6 +17,7 @@ const BGLDecoder = struct {
     data: []const u8,
     header: Header,
     section_headers: std.ArrayList(SectionHeader),
+    alloc: std.mem.Allocator,
 
     const Header = struct {
         magic1: u32,
@@ -41,27 +42,32 @@ const BGLDecoder = struct {
             .header = header,
             .data = data, //
             .section_headers = section_headers,
+            .alloc = alloc,
         };
     }
 
     pub fn deinit(self: *BGLDecoder) void {
+        for (self.section_headers.items) |*section| {
+            section.deinit();
+        }
+
         self.section_headers.deinit();
     }
 
     pub fn fillData(self: *BGLDecoder) !void {
         for (0..self.header.sections_len) |_| {
-            try self.nextSectionHeader();
+            try self.loadSectionHeader();
         }
     }
 
-    fn nextSectionHeader(self: *BGLDecoder) !void {
+    fn loadSectionHeader(self: *BGLDecoder) !void {
         if (self.section_headers.items.len >= self.header.sections_len) {
             return error.InvalidSectionIndex;
         }
 
         const size_of_section = @divExact(@bitSizeOf(SectionHeader.SectionHeaderRaw), 8);
         const start_offset = @divExact(@bitSizeOf(Header), 8) + (self.section_headers.items.len * size_of_section);
-        const header = try SectionHeader.init(self.data[start_offset .. start_offset + size_of_section]);
+        const header = try SectionHeader.init(self.alloc, self.data[start_offset .. start_offset + size_of_section]);
 
         try self.section_headers.append(header);
     }
@@ -92,10 +98,11 @@ pub fn main() !void {
     defer xml_file.close();
 
     for (decoder.section_headers.items) |*section| {
-        for (0..section.raw.num_subsections) |idx| {
-            var sub_section = try section.findSubSection(data, idx);
-            try sub_section.writeData(allocator, data, &root);
+        for (0..section.raw.num_subsections) |_| {
+            try section.loadSubSection(data);
         }
+
+        try section.writeData(allocator, data, &root);
     }
 
     try root.write(xml_file, 0);
