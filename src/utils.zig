@@ -72,4 +72,8 @@ test "should decode a ICAO correctly" {
     const data2 = try Utils.decodeICAO(std.testing.allocator, 1004523782, true);
     try std.testing.expectEqualStrings("D014M", data2);
     defer std.testing.allocator.free(data2);
+
+    const data3 = try Utils.decodeICAO(std.testing.allocator, 3072388110 >> 11, false);
+    try std.testing.expectEqualStrings("PAWN", data3);
+    defer std.testing.allocator.free(data3);
 }

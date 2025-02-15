@@ -343,8 +343,8 @@ const WaypointSubSection = struct {
         const longitude = try Utils.floatToString(self.alloc, Utils.computeLongitude(self.raw.longitude));
         const mag_var = try Utils.floatToString(self.alloc, self.raw.magnetic_variation_deg);
         const icao = try Utils.decodeICAO(self.alloc, self.raw.icao_ident, true);
-        const airport_icao = try Utils.decodeICAO(self.alloc, (self.raw.region >> 11), true);
-        const region = try Utils.decodeICAO(self.alloc, self.raw.region & 0x7FF, true);
+        const airport_icao = try Utils.decodeICAO(self.alloc, (self.raw.region >> 11), false);
+        const region = try Utils.decodeICAO(self.alloc, self.raw.region & 0x7FF, false);
         defer {
             self.alloc.free(latitude);
             self.alloc.free(longitude);
