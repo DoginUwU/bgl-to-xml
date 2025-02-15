@@ -192,6 +192,8 @@ const AirportSubSection = struct {
             Jetway = 0xDE,
             TaxiwayParking = 0xE7,
             GroundMerging = 0xE9,
+            Approach = 0xFA,
+            Departure = 0x42,
         };
 
         const RecordRaw = packed struct {
@@ -199,9 +201,9 @@ const AirportSubSection = struct {
             size: u32,
         };
 
-        pub fn init(data: []const u8) Record {
-            const raw = std.mem.bytesToValue(RecordRaw, data[0..@divExact(@bitSizeOf(RecordRaw), 8)]);
-            const record_data = data[@divExact(@bitSizeOf(RecordRaw), 8)..raw.size];
+        pub fn init(data: []const u8, offset: u32) Record {
+            const raw = std.mem.bytesToValue(RecordRaw, data[offset .. offset + @divExact(@bitSizeOf(RecordRaw), 8)]);
+            const record_data = data[offset + @divExact(@bitSizeOf(RecordRaw), 8) .. offset + raw.size];
 
             return .{
                 .raw = raw,
@@ -213,7 +215,7 @@ const AirportSubSection = struct {
     const AirportSubSectionRaw = packed struct {
         id: u16,
         size: u32,
-        runway_recods: u8,
+        runway_records: u8,
         com_records: u8,
         start_records: u8,
         approach_records: u8,
@@ -247,7 +249,7 @@ const AirportSubSection = struct {
         var current_size_records: u32 = @divExact(@bitSizeOf(AirportSubSectionRaw), 8);
 
         while (current_size_records < raw.size) {
-            const new_record = Record.init(data[current_size_records..]);
+            const new_record = Record.init(data, current_size_records);
             try records.append(new_record);
 
             current_size_records += new_record.raw.size;
@@ -269,13 +271,25 @@ const AirportSubSection = struct {
 
     pub fn write(self: *AirportSubSection) !XmlNode {
         var node = XmlNode.init(self.alloc, "Airport");
+        // std.debug.print("{any}\n", .{self.raw});
 
-        for (self.records.items[0..1]) |*record| {
+        for (self.records.items) |*record| {
             switch (record.raw.id) {
                 .AirportName => {
                     try node.addAttribute("name", Utils.trimNullTerminator(record.record_data));
                 },
-                else => {},
+                .Departure => {
+                    const new_node = XmlNode.init(self.alloc, "Departure");
+                    try node.addChild(new_node);
+                    // std.debug.print("{x}\n", .{record.record_data});
+                },
+                .Approach => {
+                    const new_node = XmlNode.init(self.alloc, "Approach");
+                    try node.addChild(new_node);
+                },
+                else => {
+                    std.debug.print("Not implemented Record type data {any}\n", .{record.raw.id});
+                },
             }
         }
 

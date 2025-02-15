@@ -66,6 +66,6 @@ pub const XmlNode = struct {
             try child.write(file, indent + 1);
         }
 
-        try writer.print("</{s}>", .{self.name});
+        try writer.print("{s}</{s}>\n", .{ indentation, self.name });
     }
 };
