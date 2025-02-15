@@ -271,7 +271,6 @@ const AirportSubSection = struct {
 
     pub fn write(self: *AirportSubSection) !XmlNode {
         var node = XmlNode.init(self.alloc, "Airport");
-        // std.debug.print("{any}\n", .{self.raw});
 
         for (self.records.items) |*record| {
             switch (record.raw.id) {
@@ -281,11 +280,28 @@ const AirportSubSection = struct {
                 .Departure => {
                     const new_node = XmlNode.init(self.alloc, "Departure");
                     try node.addChild(new_node);
-                    // std.debug.print("{x}\n", .{record.record_data});
                 },
                 .Approach => {
-                    const new_node = XmlNode.init(self.alloc, "Approach");
+                    const raw = std.mem.bytesToValue(Approach, record.record_data);
+                    var new_node = XmlNode.init(self.alloc, "Approach");
+
+                    const runway = try std.fmt.allocPrint(self.alloc, "{d:0>2}", .{raw.runway_num});
+                    const region = try Utils.decodeICAO(self.alloc, raw.fix_region, false);
+                    const fixIdent = try Utils.decodeICAO(self.alloc, raw.fix_icao, false);
+                    defer {
+                        self.alloc.free(runway);
+                        self.alloc.free(region);
+                        self.alloc.free(fixIdent);
+                    }
+
+                    try new_node.addAttribute("runway", runway);
+                    try new_node.addAttribute("fixRegion", region);
+                    try new_node.addAttribute("fixIdent", fixIdent);
+                    try new_node.addAttribute("type", @tagName(raw.type));
+                    try new_node.addAttribute("fixType", @tagName(raw.fix_type));
+
                     try node.addChild(new_node);
+                    std.debug.print("{any}\n", .{raw});
                 },
                 else => {
                     std.debug.print("Not implemented Record type data {any}\n", .{record.raw.id});
@@ -377,4 +393,47 @@ const WaypointSubSection = struct {
 
         return node;
     }
+};
+
+const ApproachType = enum(u4) {
+    GPS = 0x01,
+    VOR = 0x02,
+    NDB = 0x03,
+    ILS = 0x04,
+    LOC = 0x05,
+    SDF = 0x06,
+    LDA = 0x07,
+    VORDME = 0x08,
+    NDBDME = 0x09,
+    RNAV = 0x0a,
+    LOCALIZER_BACKCOURSE = 0x0b,
+};
+
+const ApproachIdentType = enum(u5) {
+    AIRPORT,
+    VOR,
+    NDB,
+    TERMINAL_NDB,
+    WAYPOINT,
+    TERMINAL_WAYPOINT,
+    LOCALIZER,
+    RUNWAY,
+};
+
+const Approach = packed struct {
+    suffix: u8,
+    runway_num: u8,
+    type: ApproachType,
+    runway_designator: u3,
+    flag: u1,
+    transitions_num: u8,
+    approach_legs_num: u8,
+    missed_approach_legs_num: u8,
+    fix_type: ApproachIdentType,
+    fix_icao: u27,
+    fix_region: u11,
+    icao_ident: u21,
+    altitude: f32,
+    heading: f32,
+    missed_altitude: f32,
 };
