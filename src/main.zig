@@ -79,7 +79,7 @@ pub fn main() !void {
 
     var allocator = gp.allocator();
 
-    var file = try std.fs.cwd().openFile("test/raw1.bgl", .{});
+    var file = try std.fs.cwd().openFile("test/raw2.bgl", .{});
     defer file.close();
 
     const file_size = try file.getEndPos();

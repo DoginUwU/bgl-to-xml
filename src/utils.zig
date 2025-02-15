@@ -25,7 +25,7 @@ pub const Utils = struct {
 
     pub fn decodeICAO(alloc: std.mem.Allocator, value: u32, is_aiport: bool) ![]const u8 {
         var defined_value = if (is_aiport) value >> 5 else value;
-        const buffer = try alloc.alloc(u8, if (value > 99999999) 5 else 4);
+        const buffer = try alloc.alloc(u8, 5);
 
         var index: usize = 0;
 
@@ -37,6 +37,8 @@ pub const Utils = struct {
 
         buffer[index] = valueToCharICAO(defined_value);
         index += 1;
+
+        _ = alloc.resize(buffer, index);
 
         std.mem.reverse(u8, buffer[0..index]);
 
