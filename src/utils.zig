@@ -25,13 +25,13 @@ pub const Utils = struct {
 
     pub fn decodeICAO(alloc: std.mem.Allocator, value: u32, is_aiport: bool) ![]const u8 {
         var defined_value = if (is_aiport) value >> 5 else value;
-        const buffer = try alloc.alloc(u8, 4);
+        const buffer = try alloc.alloc(u8, if (value > 99999999) 5 else 4);
 
         var index: usize = 0;
 
         while (defined_value > 37) {
             buffer[index] = valueToCharICAO(defined_value % 38);
-            defined_value = defined_value / 38;
+            defined_value = (defined_value) / 38;
             index += 1;
         }
 
@@ -65,7 +65,11 @@ test "should format float to string correctly" {
 }
 
 test "should decode a ICAO correctly" {
-    const data = try Utils.decodeICAO(std.testing.allocator, 53277537, true);
-    try std.testing.expectEqualStrings("SAZR", data);
-    defer std.testing.allocator.free(data);
+    const data1 = try Utils.decodeICAO(std.testing.allocator, 53277537, true);
+    try std.testing.expectEqualStrings("SAZR", data1);
+    defer std.testing.allocator.free(data1);
+
+    const data2 = try Utils.decodeICAO(std.testing.allocator, 1004523782, true);
+    try std.testing.expectEqualStrings("D014M", data2);
+    defer std.testing.allocator.free(data2);
 }

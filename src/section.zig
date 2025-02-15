@@ -131,7 +131,13 @@ pub const SubSection = struct {
             SectionType.Airport => {
                 var data = try AirportSubSection.init(alloc, sliced_data);
                 defer data.deinit();
-                try data.write(alloc, node);
+                try data.write(node);
+                std.debug.print("\n{any}\n", .{data.raw});
+            },
+            SectionType.Waypoint => {
+                var data = try WaypointSubSection.init(alloc, sliced_data);
+                // defer data.deinit();
+                try data.write(node);
                 std.debug.print("\n{any}\n", .{data.raw});
             },
             else => std.debug.print("Not implemented SubSection type data {any}\n", .{self.header.raw.type}),
@@ -143,6 +149,7 @@ const AirportSubSection = struct {
     raw: AirportSubSectionRaw,
     data: []const u8,
     records: std.ArrayList(Record),
+    alloc: std.mem.Allocator,
 
     const Record = struct {
         raw: RecordRaw,
@@ -200,7 +207,7 @@ const AirportSubSection = struct {
         latitude: u32,
         altitude_meters: u32,
         idk1: u96,
-        magnetic_variation_deg: u32,
+        magnetic_variation_deg: f32,
         icao_ident: u32,
         region_ident: u32,
         fuel_type: u32,
@@ -236,6 +243,7 @@ const AirportSubSection = struct {
             .raw = raw,
             .data = data, //
             .records = records,
+            .alloc = alloc,
         };
     }
 
@@ -243,8 +251,8 @@ const AirportSubSection = struct {
         self.records.deinit();
     }
 
-    pub fn write(self: *AirportSubSection, alloc: std.mem.Allocator, node: *XmlNode) !void {
-        var new_node = XmlNode.init(alloc, "Airport");
+    pub fn write(self: *AirportSubSection, node: *XmlNode) !void {
+        var new_node = XmlNode.init(self.alloc, "Airport");
 
         for (self.records.items[0..1]) |*record| {
             switch (record.raw.id) {
@@ -255,17 +263,71 @@ const AirportSubSection = struct {
             }
         }
 
-        const latitude = try Utils.floatToString(alloc, Utils.computeLatitude(self.raw.latitude));
-        const longitude = try Utils.floatToString(alloc, Utils.computeLongitude(self.raw.longitude));
-        const icao = try Utils.decodeICAO(alloc, self.raw.icao_ident, true);
+        const latitude = try Utils.floatToString(self.alloc, Utils.computeLatitude(self.raw.latitude));
+        const longitude = try Utils.floatToString(self.alloc, Utils.computeLongitude(self.raw.longitude));
+        const icao = try Utils.decodeICAO(self.alloc, self.raw.icao_ident, true);
         defer {
-            alloc.free(latitude);
-            alloc.free(longitude);
-            alloc.free(icao);
+            self.alloc.free(latitude);
+            self.alloc.free(longitude);
+            self.alloc.free(icao);
         }
 
         try new_node.addAttribute("lat", latitude);
         try new_node.addAttribute("lon", longitude);
+        try new_node.addAttribute("ident", icao);
+
+        try node.addChild(new_node);
+    }
+};
+
+const WaypointSubSection = struct {
+    raw: WaypointSubSectionRaw,
+    data: []const u8,
+    alloc: std.mem.Allocator,
+
+    const WaypointType = enum(u8) {
+        Named = 1,
+        Unnamed = 2,
+        Vor = 3,
+        Ndb = 4,
+        OffRoute = 5,
+        IAF = 6,
+        FAF = 7,
+        RNAV = 8, //
+    };
+
+    const WaypointSubSectionRaw = packed struct {
+        id: u16,
+        size: u32,
+        type: WaypointType, //
+        route_entries_count: u8,
+        longitude: u32,
+        latitude: u32,
+        magnetic_variation_deg: f32,
+        icao_ident: u32,
+        region: u32,
+    };
+
+    pub fn init(alloc: std.mem.Allocator, data: []const u8) !WaypointSubSection {
+        const raw = std.mem.bytesToValue(WaypointSubSectionRaw, data[0..@divExact(@bitSizeOf(WaypointSubSectionRaw), 8)]);
+
+        std.debug.assert(raw.id == 0x0022);
+
+        return .{
+            .raw = raw,
+            .data = data,
+            .alloc = alloc, //
+        };
+    }
+
+    pub fn write(self: *WaypointSubSection, node: *XmlNode) !void {
+        var new_node = XmlNode.init(self.alloc, "Waypoint");
+
+        const icao = try Utils.decodeICAO(self.alloc, self.raw.icao_ident, true);
+        defer {
+            self.alloc.free(icao);
+        }
+
         try new_node.addAttribute("ident", icao);
 
         try node.addChild(new_node);

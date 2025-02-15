@@ -33,7 +33,7 @@ const BGLDecoder = struct {
             return error.InvalidBGL;
         }
 
-        const header = std.mem.bytesToValue(Header, data[0..@sizeOf(Header)]);
+        const header = std.mem.bytesToValue(Header, data[0..@divExact(@bitSizeOf(Header), 8)]);
         const section_headers = try std.ArrayList(SectionHeader).initCapacity(alloc, header.sections_len);
         errdefer section_headers.deinit();
 
@@ -49,24 +49,21 @@ const BGLDecoder = struct {
     }
 
     pub fn fillData(self: *BGLDecoder) !void {
-        for (0..self.header.sections_len) |i| {
-            _ = i;
-            _ = try self.nextSectionHeader();
+        for (0..self.header.sections_len) |_| {
+            try self.nextSectionHeader();
         }
     }
 
-    fn nextSectionHeader(self: *BGLDecoder) !SectionHeader {
+    fn nextSectionHeader(self: *BGLDecoder) !void {
         if (self.section_headers.items.len >= self.header.sections_len) {
             return error.InvalidSectionIndex;
         }
 
-        const start_offset = @sizeOf(Header) + (self.section_headers.items.len * @sizeOf(SectionHeader.SectionHeaderRaw));
-
-        const header = try SectionHeader.init(self.data[start_offset .. start_offset + @sizeOf(SectionHeader.SectionHeaderRaw)]);
+        const size_of_section = @divExact(@bitSizeOf(SectionHeader.SectionHeaderRaw), 8);
+        const start_offset = @divExact(@bitSizeOf(Header), 8) + (self.section_headers.items.len * size_of_section);
+        const header = try SectionHeader.init(self.data[start_offset .. start_offset + size_of_section]);
 
         try self.section_headers.append(header);
-
-        return header;
     }
 };
 
@@ -76,7 +73,7 @@ pub fn main() !void {
 
     var allocator = gp.allocator();
 
-    var file = try std.fs.cwd().openFile("test/raw2.bgl", .{});
+    var file = try std.fs.cwd().openFile("test/raw1.bgl", .{});
     defer file.close();
 
     const file_size = try file.getEndPos();
@@ -91,10 +88,8 @@ pub fn main() !void {
     var root = XmlNode.init(allocator, "Root");
     defer root.deinit();
 
-    const xml_file = try std.fs.cwd().createFile("test.xml", .{ .read = true });
+    const xml_file = try std.fs.cwd().createFile("test/test.xml", .{ .read = true });
     defer xml_file.close();
-
-    std.debug.print("{any}\n", .{decoder.section_headers.items[1]});
 
     for (decoder.section_headers.items) |*section| {
         for (0..section.raw.num_subsections) |idx| {
@@ -104,8 +99,4 @@ pub fn main() !void {
     }
 
     try root.write(xml_file, 0);
-
-    // var teste = decoder.section_headers.items[0];
-    // var teste2 = try teste.findSubSection(data, 0);
-    // try teste2.readData(allocator, data);
 }
